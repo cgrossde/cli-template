@@ -1,0 +1,137 @@
+---
+name: update-docs
+description: Update docs/, CLAUDE.md, CODING-INSTRUCTIONS.md, and ARCHITECTURE.md to match the current source code. Use when the user asks to update docs, sync documentation, or invokes /update-docs.
+allowed-tools:
+  - Bash
+  - Read
+  - Edit
+  - Write
+  - Search
+---
+
+# Update CLI Docs
+
+Keep all documentation in sync with the current source. The targets are:
+
+| File | Covers |
+|------|--------|
+| `CLAUDE.md` | Command table, flags, output contract, architecture summary — agent-facing quick reference |
+| `CODING-INSTRUCTIONS.md` | Go style, error handling, testing rules — developer conventions |
+| `ARCHITECTURE.md` | Two-layer model, output modes, per-command JSON schemas, design constraints |
+| `docs/<command>.md` | Per-command: accepted forms, flags, output format, JSON schema |
+
+---
+
+## Step 1: Identify what changed
+
+```bash
+git diff HEAD~10..HEAD --name-only
+```
+
+Adjust the depth if the branch is newer. Map changed source files to affected docs:
+
+| Changed source | Docs to check |
+|---|---|
+| `cmd/<command>.go` | `docs/<command>.md`, `CLAUDE.md`, `ARCHITECTURE.md` |
+| `internal/<pkg>/` | `docs/<command>.md` (if user-facing), `docs/internals.md` |
+| `internal/keychain/` | `docs/auth.md`, `CLAUDE.md` |
+| `internal/output/presenter.go` | `ARCHITECTURE.md`, `CLAUDE.md` |
+| `main.go` | `ARCHITECTURE.md`, `CLAUDE.md` |
+
+Read only the source files relevant to changed docs. Do not read unchanged packages.
+
+---
+
+## Step 2: Identify gaps
+
+Compare source to doc. Look for:
+
+- **New commands or subcommands** not in `CLAUDE.md`'s command table
+- **New flags** not listed in the command doc
+- **Changed output format** — new fields, renamed fields, new lines
+- **New JSON fields** missing from the schema table
+- **Removed or renamed flags/fields**
+- **New behaviour** worth documenting
+
+Do **not** update without user approval:
+- **`ARCHITECTURE.md`** structural changes — anything that modifies the two-layer model, output mode rules, or design constraint prose. Additive factual updates (new package in tree, new field in JSON schema table) are fine without asking.
+- **`CODING-INSTRUCTIONS.md`** — any change, because every rule here affects all future code in the project.
+- **`CLAUDE.md`** command table and output contract — additions are fine; removing or changing an existing entry requires approval.
+
+For these, stop before editing and present the proposed change:
+
+```
+Proposed change to ARCHITECTURE.md:
+  Section "Package Structure" — add cmd/foo.go entry
+  Reason: new file added in recent commits
+
+Approve? (yes / no / edit)
+```
+
+Apply only on explicit approval.
+
+Silently update (no approval needed):
+- `docs/*.md` — command docs are always kept current
+- `CLAUDE.md` — adding a new command row or flag that didn't exist before
+- `ARCHITECTURE.md` — additive factual edits: new file in package tree, new field in JSON schema
+
+---
+
+## Step 3: Update each stale doc
+
+### `CLAUDE.md`
+
+- **Command table**: one row per command, flags column lists all flags with brief descriptions
+- **Output contract**: reflect any new output fields or changed footer behaviour
+- **Reference section**: add links to any new doc files
+
+### `CODING-INSTRUCTIONS.md`
+
+Update only when:
+- A new project-wide pattern was established
+- An existing rule was changed or a new exception added
+- A new external dependency was added with rationale
+
+### `ARCHITECTURE.md`
+
+- **Package structure** tree: add new files, remove deleted ones
+- **JSON output schema table**: add new fields for commands that gained them
+- **Design constraints**: only update if a constraint changed
+
+### `docs/<command>.md`
+
+**Flags section** — one bullet per flag, format:
+```
+- `--flag-name value`: Description. Default: `value` (omit if empty/none).
+```
+
+**Output format** — show a realistic rendered example. Use real-looking values, not `<placeholder>`.
+
+**JSON schema table** — columns: `Field | Type | Notes`. Notes explain semantics, not Go types. Fields marked `omitempty` in source: "omitted when zero/empty".
+
+**Keep examples concrete** — realistic values and identifiers, not angle-bracket placeholders.
+
+---
+
+## Step 4: Verify
+
+After editing, re-read each changed doc:
+- No section references a flag or field that no longer exists
+- JSON schema table matches actual `json:"..."` struct tags in source
+- Every accepted input form is listed
+- The `## Implementation` section (if present) names the correct files
+
+---
+
+## Step 5: Report
+
+Print a one-line summary per file touched:
+
+```
+CLAUDE.md                — updated: added hello --pretty flag
+ARCHITECTURE.md          — updated: hello --json schema
+docs/hello.md            — updated: --pretty flag, ANSI rendering note
+CODING-INSTRUCTIONS.md   — no changes needed
+```
+
+Do not commit. The user decides when to commit.
